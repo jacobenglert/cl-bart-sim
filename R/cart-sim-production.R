@@ -8,7 +8,7 @@
 library(tidyverse)
 library(survival)
 library(clogitL1)
-library(clbart2)
+library(clbart)
 library(parallel)
 
 # Get Parameters ----------------------------------------------------------
@@ -22,7 +22,7 @@ for(i in 1:ncol(params)){
 
 # Set Simulation Parameters -----------------------------------------------
 set.seed(seed)                              # Random Seed
-n       <- 10000                            # Initial Population Size
+n       <- 1000                            # Initial Population Size
 start   <- as.Date("2020-01-01")            # Start of follow-up period
 end     <- as.Date("2022-12-31")            # End of follow-up period
 dates   <- seq.Date(start, end, by = 'day') # 3-year follow-up period
@@ -122,7 +122,7 @@ tau_lasso <- as.numeric(as.matrix(w_cc_2) %*% beta_lasso_cv)[c(T,F,F,F)]
 fit_clbarts <- mclapply(1:5, function(s){
   clbart(w = w_cc, y = y_cc, z = z_cc, stratum = strata_cc,
          num_trees = num_trees, seed = s,
-         iter = iter, thin = thin, warmup = warmup,
+         iter = 1000, thin = thin, warmup = 500,
          sigma2_beta = sigma2_beta,
          sigma2_beta_update_freq = sigma2_beta_update_freq,
          beta_acc_prob = beta_acc_prob,
