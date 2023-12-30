@@ -6,8 +6,8 @@
 #SBATCH --mem-per-cpu=4G                # memory per cpu-core (4G is default)
 #SBATCH --mail-type=ALL                # Email received when job fails only (can also set as start, etc.)
 #SBATCH --mail-user=jrengle@emory.edu   # Email to receive
-#SBATCH --output=Output/CART/cart-combine.out # Output file
-#SBATCH --error=Error/CART/cart-combine.err   # Error file
+#SBATCH --output=Output/CART/combine.out # Output file
+#SBATCH --error=Error/CART/combine.err   # Error file
 
 module load R/4.2.2
 
