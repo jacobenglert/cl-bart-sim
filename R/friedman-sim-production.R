@@ -1,4 +1,4 @@
-# Program Name: friedman_sim.R
+# Program Name: friedman-sim-production.R
 # Author: Jacob Englert
 # Date: 24JUL2023
 # Description: A CL-BART simulation study where the true log odds-ratio 
@@ -8,14 +8,14 @@
 library(tidyverse)
 library(survival)
 # library(clogitL1)
-library(clbart2)
+library(clbart)
 library(parallel)
 
 # Get Parameters ----------------------------------------------------------
 args <- commandArgs(trailingOnly = TRUE)
 names(args) <- c('index')
 index <- as.numeric(args['index'])
-params <- read_csv(paste0('Params/friedman_params.csv'), show_col_types = F)[,-1]
+params <- read_csv(here::here('Params','friedman-params.csv'), show_col_types = F)[,-1]
 for(i in 1:ncol(params)){
   assign(names(params[index,i]), eval(parse(text = params[index, i, drop = TRUE])))
 }
@@ -122,30 +122,6 @@ fit_clbarts <- mclapply(1:5, function(s){
          alpha_sigma = alpha_sigma, beta_sigma = beta_sigma)
 }, mc.cores = 5)
 
-# cl <- makeCluster(5)
-# 
-# clusterExport(cl, varlist = c("w_cc", "y_cc", "z_cc", "strata_cc",
-#                               "num_trees", "iter", "thin", "warmup",
-#                               "sigma2_beta", "sigma2_beta_update_freq",
-#                               "beta_acc_prob", "n_min", "moves", "move_probs",
-#                               "alpha_rho", "beta_rho", "alpha_sigma", "beta_sigma"))
-# 
-# 
-# fit_clbarts <- clusterApply(cl, 1:5, \(s){ 
-#   clbart2::clbart(seed = s, 
-#                   w = w_cc, y = y_cc, z = z_cc, stratum = strata_cc, 
-#                   num_trees = num_trees,
-#                   iter = iter, thin = thin, warmup = warmup, 
-#                   sigma2_beta = sigma2_beta, 
-#                   sigma2_beta_update_freq = sigma2_beta_update_freq,
-#                   beta_acc_prob = beta_acc_prob, 
-#                   n_min = n_min, 
-#                   moves = moves, move_probs = move_probs, 
-#                   alpha_rho = alpha_rho, beta_rho = beta_rho, 
-#                   alpha_sigma = alpha_sigma, beta_sigma = beta_sigma)})
-# 
-# stopCluster(cl)
-
 fit_clbart <- fit_clbarts[[which.min(lapply(fit_clbarts, '[[', 'WAIC'))]]
 
 # Summarize Results -------------------------------------------------------
@@ -225,5 +201,5 @@ results <- left_join(results, results2, by = 'model')
 
 # Output Results ----------------------------------------------------------
 message(paste0("SLURM_ARRAY_TASK_ID is : ", index))
-if(!dir.exists("Results/friedman/temp")) dir.create("Results/friedman/temp")
-write_csv(results, paste0("Results/friedman/temp/", sprintf("%05d", index), ".csv"))
+if(!dir.exists(here::here('Results','friedman','temp'))) dir.create(here::here('Results','friedman','temp'))
+write_csv(results, here::here('Results','friedman','temp', paste0(sprintf("%05d", index), ".csv")))
