@@ -1,16 +1,24 @@
-# Program Name: CART_summary.R
+# Program Name: cart-sim-analysis.R
 # Author: Jacob Englert
 # Date: 24JUL2023
 # Description: Analyze the results of the CART simulation study.
 
 # Load Packages -----------------------------------------------------------
 library(tidyverse)
+library(patchwork)
+
 
 # Load Results ------------------------------------------------------------
+
+# Simulation date
 sim_date <- "01AUG2023"
 
+# Create output directories
+dir.create(here::here('Tables','CART', sim_date), recursive = TRUE)
+dir.create(here::here('Figures','CART', sim_date), recursive = TRUE)
+
 # Read in simulation results
-results0 <- read_csv(paste0('Results/CART/', sim_date, '.csv'),
+results0 <- read_csv(here::here('Results','CART', paste0(sim_date, '.csv')),
                      show_col_types = FALSE, 
                      col_types = cols(waic = col_double(), 
                                       W1 = col_double(), W2 = col_double(), W3 = col_double(),
@@ -53,15 +61,17 @@ summaries <- results |>
                          Metric == 'rpehe' ~ 0)) |>
   filter(!is.na(mean))
 
-# Overall Results ---------------------------------------------------------
 
+# Tables and Figures ------------------------------------------------------
+
+# Define formatting function
 fmt_dec <- function(num, ndec = 2){
   new_num <- round(num, ndec)
   if(new_num < 0) sprintf(paste0("%.", ndec, "f"), new_num)
   else sprintf(paste0("%.", ndec, "f"), abs(new_num))
 }
 
-# First Table
+# Summary statistics table - overall and grouped
 t1 <- summaries |>
   filter(model == 'CL-BART' | (model == 'clogit' & num_trees == 1) | model == 'CL-BART-avg') |>
   mutate(num_trees = ifelse(model == 'clogit', NA, num_trees),
@@ -77,11 +87,9 @@ t1 <- summaries |>
   pivot_wider(id_cols = c(p, corstr, subset, alpha_rho, beta_rho, model, num_trees),
               names_from = Metric, values_from = Value) |>
   arrange(p, corstr, subset, alpha_rho, beta_rho, model, num_trees)
-write_csv(t1, paste0('Tables/CART/', sim_date, '/t1.csv'))
+write_csv(t1, here::here('Tables','CART', sim_date, 'cart-summary-stats.csv'))
 
-
-
-# Figure (option 1, with clogit)
+# Summary statistics plot - overall
 for(c in unique(summaries$corstr)){
   for(a in unique(summaries$alpha_rho)){
     f1 <- summaries |>
@@ -102,43 +110,16 @@ for(c in unique(summaries$corstr)){
            x = 'Number of Trees in Ensemble',
            y = 'Estimate w/ 95% Monte Carlo Confidence Interval',
            color = 'Model')
-    ggsave(paste0('Figures/CART/', sim_date, '/f1_', substr(c, 1, 4), '_', a, '.png'), 
+    ggsave(here::here('Figures','CART', sim_date, paste0('cart-summary-', substr(c, 1, 4), '-', a, '.png')), 
            plot = f1, width = 7, height = 6)
   }
 }
 
 
-# summaries |>
-#   filter(corstr == 'AR-1') |>
-#   filter(model == 'CL-BART' | (model == 'clogit' & num_trees == 1) | model == 'CL-BART-avg') |>
-#   filter(subset == 'overall') |>
-#   filter(Metric %in% c('bias','coverage','rpehe')) |>
-#   pivot_wider(id_cols = c(p, corstr, alpha_rho, beta_rho, num_trees, Metric),
-#               names_from = model, values_from = c(mean, l95, u95)) |>
-#   ggplot(aes(x = num_trees, y = `mean_CL-BART`, color = interaction(alpha_rho, beta_rho))) +
-#   geom_pointrange(aes(ymin = `l95_CL-BART`, ymax = `u95_CL-BART`), size = .3, position = position_dodge(.5)) +
-#   geom_line(position = position_dodge(.5)) +
-#   geom_hline(aes(yintercept = mean_clogit), lty = 2, alpha = 0.5) +
-#   geom_hline(aes(yintercept = l95_clogit), lty = 2, alpha = 0.5) +
-#   geom_hline(aes(yintercept = u95_clogit), lty = 2, alpha = 0.5) +
-#   facet_grid(Metric~paste0('# Predictors: ', p), scales = 'free') + 
-#   theme_bw() +
-#   scale_x_continuous(breaks = unique(results$num_trees)) +
-#   labs(title = 'Simulation Results - Overall',
-#        subtitle = paste0('Predictors sampled from a set of predictors with an ', unique(results$corstr), ' correlation structure.'),
-#        x = 'Number of Trees in Ensemble',
-#        y = 'Estimate w/ 95% Monte Carlo Confidence Interval',
-#        color = 'Regularization')
-
-
-
-
-# Subgroup Results --------------------------------------------------------
-
-# Figure (option 1, with clogit)
+# Summary statistics plot - grouped
 for(c in unique(summaries$corstr)){
   for(a in unique(summaries$alpha_rho)){
-    f2 <- summaries |>
+    f1 <- summaries |>
       filter(corstr == c & alpha_rho == a) |>
       filter(model %in% c('CL-BART','clogit','CL-BART-avg')) |>
       filter(subset != 'overall') |>
@@ -157,16 +138,14 @@ for(c in unique(summaries$corstr)){
            y = 'Estimate w/ 95% Monte Carlo Confidence Interval',
            shape = 'Model',
            color = 'Subgroup')
-    ggsave(paste0('Figures/CART/', sim_date, '/f2_', substr(c, 1, 4), '_', a, '.png'), 
-           plot = f2, width = 9, height = 5)
+    ggsave(here::here('Figures','CART', sim_date, paste0('cart-group-summary-', substr(c, 1, 4), '-', a, '.png')), 
+           plot = f1, width = 9, height = 5)
   }
 }
 
 
-# In-Depth Analysis of CL-BART Model Fits ---------------------------------
-
-# Analyze the relative performance change when adding more trees
-clbart_rel <- results |>
+# Relative performance table
+t2 <- results |>
   filter(subset == 'overall') |>
   filter(model == 'CL-BART') |>
   pivot_longer(cols = bias:waic, names_to = 'Metric', values_to = 'Value') |>
@@ -177,10 +156,9 @@ clbart_rel <- results |>
             .by = c(Metric, p, corstr, alpha_rho, beta_rho, num_trees)) |>
   pivot_wider(id_cols = c(corstr, p, alpha_rho, beta_rho, num_trees), 
               names_from = Metric, values_from = mean_rel_val)
-clbart_rel
 
-# Visualize dip in WAIC
-clbart_rel |>
+# Relative performance plot
+f2 <- t2 |>
   filter(corstr == 'AR-1') |>
   pivot_longer(cols = bias:waic, names_to = 'Metric', values_to = 'Value') |>
   filter(Metric != 'width') |>
@@ -191,49 +169,10 @@ clbart_rel |>
   facet_grid(Metric~paste0('# Predictors: ', p), scales = 'free') + 
   theme_bw() +
   theme(legend.position = 'top')
+ggsave(here::here('Figures','CART', sim_date, 'cart-relative-performance.png'), width = 6, height = 5)
 
-
-# WAIC plot
-cart_waic <- clbart_rel |>
-  filter(p == 10 & corstr == 'AR-1' & alpha_rho == 0.95) |>
-  pivot_longer(cols = bias:waic, names_to = 'Metric', values_to = 'Value') |>
-  filter(Metric == 'waic') |>
-  ggplot(aes(x = factor(num_trees), y = Value, group = interaction(alpha_rho, beta_rho, corstr), lty = corstr)) +
-  geom_point(show.legend = FALSE) +
-  geom_line(show.legend = FALSE) +
-  theme_bw() +
-#  facet_wrap(~Metric, scales = 'free') +
-  theme(legend.position = 'top') +
-  labs(x = '# Trees',
-       y = 'Average Relative WAIC')
-ggsave(cart_waic, paste0('Figures/CART/', sim_date, '/waic.png'), width = 4, height = 4)
-
-# clbart_avg_rel <- results |>
-#   filter(subset != 'overall') |>
-#   filter(model == 'CL-BART-avg') |>
-#   pivot_longer(cols = coverage:width, names_to = 'Metric', values_to = 'Value') |>
-#   mutate(ref_val = min(abs(Value)), 
-#          rel_val = abs(Value) / ref_val,
-#          .by = c(subset, Metric, p, corstr, alpha_rho, beta_rho, seed)) |>
-#   summarise(mean_rel_val = mean(rel_val), 
-#             .by = c(subset, Metric, p, corstr, alpha_rho, beta_rho, num_trees)) |>
-#   pivot_wider(id_cols = c(corstr, p, alpha_rho, beta_rho, subset, num_trees), 
-#               names_from = Metric, values_from = mean_rel_val) |>
-#   arrange(corstr, p, alpha_rho, beta_rho, subset, num_trees)
-# clbart_avg_rel
-  
-
-# Distribution of Predictions ---------------------------------------------
-results |>
-  filter(model %in% c('clogit','CL-BART')) |>
-  ggplot(aes(x = est, fill = model)) +
-  geom_histogram(alpha = 0.4, position = 'identity') +
-  geom_vline(xintercept = log(c(.8,1.1,1.3,1.5))) +
-  facet_grid(num_trees~alpha_rho, scales = 'free')
-
-
-# Variable Importance
-results |>
+# Variable importance plot
+f3 <- results |>
   filter(model == 'CL-BART') |>
   filter(subset == 'overall') |>
   filter(corstr == 'AR-1') |>
@@ -250,8 +189,26 @@ results |>
   theme_bw()
 
 
-# variable importance plot
-cart_imp <- results |>
+
+# Manuscript Figures ------------------------------------------------------
+
+# Relative WAIC plot
+f2a <- t2 |>
+  filter(p == 10 & corstr == 'AR-1' & alpha_rho == 0.95) |>
+  pivot_longer(cols = bias:waic, names_to = 'Metric', values_to = 'Value') |>
+  filter(Metric == 'waic') |>
+  ggplot(aes(x = factor(num_trees), y = Value, group = interaction(alpha_rho, beta_rho, corstr), lty = corstr)) +
+  geom_point(show.legend = FALSE) +
+  geom_line(show.legend = FALSE) +
+  theme_bw() +
+#  facet_wrap(~Metric, scales = 'free') +
+  theme(legend.position = 'top') +
+  labs(x = '# Trees',
+       y = 'Average Relative WAIC')
+ggsave(here::here('Figures','CART', sim_date, 'cart-relative-waic.png'), width = 4, height = 4)
+
+# Variable importance plot
+f3a <- results |>
   filter(model == 'CL-BART') |>
   filter(subset == 'overall') |>
   filter(corstr == 'AR-1' & alpha_rho == 0.95 & p == 10) |>
@@ -271,30 +228,49 @@ cart_imp <- results |>
   labs(x = 'Effect Moderator',
        y = 'Average Variable Split Proportion',
        color = '# Trees')
-ggsave(cart_imp, paste0('Figures/CART/', sim_date, '/CART_imp.png'), width = 6.5, height = 5)
+ggsave(here::here('Figures','CART', sim_date, 'cart-var-imp.png'), width = 6.5, height = 5)
+write_rds(f3a, here::here('Figures','CART', sim_date, 'cart-var-imp.rds'))
 
-
-library(patchwork)
-cart_waic + cart_imp + plot_annotation(tag_levels = 'A')
-ggsave(paste0('Figures/CART/', sim_date, '/CART_waic_imp.png'), width = 6.5, height = 3.5)
-
-
-
-t2 <- results |>
-  filter(model == 'CL-BART') |>
-  filter(subset == 'overall') |>
-  pivot_longer(cols = W1:W20, names_to = 'Moderator', values_to = 'Value') |>
-  mutate(Value = coalesce(Value, 0),
-         Moderator = factor(Moderator, levels = paste0('W',1:20))) |>
-  filter(!(p == 10 & Moderator %in% paste0('W',11:20))) |>
-  summarise(mean = mean(Value),
-            .by = c(Moderator, subset, corstr, p, num_trees, alpha_rho, beta_rho)) |>
-  pivot_wider(id_cols = subset:beta_rho, names_from = Moderator, values_from = mean)
+# Combined relative WAIC and variable importance plot
+f2a + f3a + plot_annotation(tag_levels = 'A')
+ggsave(here::here('Figures','CART', sim_date, 'cart-waic-and-var-imp.png'), width = 6.5, height = 3.5)
 
 
 
 # Helpful overall summaries -----------------------------------------------
 
+# Distribution of predictions
+results |>
+  filter(model %in% c('clogit','CL-BART')) |>
+  ggplot(aes(x = est, fill = model)) +
+  geom_histogram(alpha = 0.4, position = 'identity') +
+  geom_vline(xintercept = log(c(.8,1.1,1.3,1.5))) +
+  facet_grid(num_trees~alpha_rho, scales = 'free')
+
+# CART comparison between CL-BART models - overall
+summaries |>
+  filter(corstr == 'AR-1') |>
+  filter(model == 'CL-BART' | (model == 'clogit' & num_trees == 1) | model == 'CL-BART-avg') |>
+  filter(subset == 'overall') |>
+  filter(Metric %in% c('bias','coverage','rpehe')) |>
+  pivot_wider(id_cols = c(p, corstr, alpha_rho, beta_rho, num_trees, Metric),
+              names_from = model, values_from = c(mean, l95, u95)) |>
+  ggplot(aes(x = num_trees, y = `mean_CL-BART`, color = interaction(alpha_rho, beta_rho))) +
+  geom_pointrange(aes(ymin = `l95_CL-BART`, ymax = `u95_CL-BART`), size = .3, position = position_dodge(.5)) +
+  geom_line(position = position_dodge(.5)) +
+  geom_hline(aes(yintercept = mean_clogit), lty = 2, alpha = 0.5) +
+  geom_hline(aes(yintercept = l95_clogit), lty = 2, alpha = 0.5) +
+  geom_hline(aes(yintercept = u95_clogit), lty = 2, alpha = 0.5) +
+  facet_grid(Metric~paste0('# Predictors: ', p), scales = 'free') +
+  theme_bw() +
+  scale_x_continuous(breaks = unique(results$num_trees)) +
+  labs(title = 'Simulation Results - Overall',
+       subtitle = paste0('Predictors sampled from a set of predictors with an ', unique(results$corstr), ' correlation structure.'),
+       x = 'Number of Trees in Ensemble',
+       y = 'Estimate w/ 95% Monte Carlo Confidence Interval',
+       color = 'Regularization')
+
+# CART comparison between CL-BART models and CL-BART-avg
 refs <- summaries |>
   filter(p == 10) |>
   filter(subset == 'overall') |>
@@ -322,3 +298,29 @@ summaries |>
        x = 'Number of Trees in Ensemble',
        y = 'Estimate w/ 95% Monte Carlo Confidence Interval',
        color = 'Regularization')
+
+# Relative performance of CL-BART-avg
+results |>
+  filter(subset != 'overall') |>
+  filter(model == 'CL-BART-avg') |>
+  pivot_longer(cols = coverage:width, names_to = 'Metric', values_to = 'Value') |>
+  mutate(ref_val = min(abs(Value)),
+         rel_val = abs(Value) / ref_val,
+         .by = c(subset, Metric, p, corstr, alpha_rho, beta_rho, seed)) |>
+  summarise(mean_rel_val = mean(rel_val),
+            .by = c(subset, Metric, p, corstr, alpha_rho, beta_rho, num_trees)) |>
+  pivot_wider(id_cols = c(corstr, p, alpha_rho, beta_rho, subset, num_trees),
+              names_from = Metric, values_from = mean_rel_val) |>
+  arrange(corstr, p, alpha_rho, beta_rho, subset, num_trees)
+
+# Summary statistics for variable importance - overall
+results |>
+  filter(model == 'CL-BART') |>
+  filter(subset == 'overall') |>
+  pivot_longer(cols = W1:W20, names_to = 'Moderator', values_to = 'Value') |>
+  mutate(Value = coalesce(Value, 0),
+         Moderator = factor(Moderator, levels = paste0('W',1:20))) |>
+  filter(!(p == 10 & Moderator %in% paste0('W',11:20))) |>
+  summarise(mean = mean(Value),
+            .by = c(Moderator, subset, corstr, p, num_trees, alpha_rho, beta_rho)) |>
+  pivot_wider(id_cols = subset:beta_rho, names_from = Moderator, values_from = mean)

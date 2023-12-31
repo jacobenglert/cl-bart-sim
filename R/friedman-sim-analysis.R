@@ -1,16 +1,24 @@
-# Program Name: friedman_summary.R
+# Program Name: friedman-sim-analysis.R
 # Author: Jacob Englert
 # Date: 25JUL2023
 # Description: Analyze the results of the Friedman simulation study.
 
 # Load Packages -----------------------------------------------------------
 library(tidyverse)
+library(patchwork)
+
 
 # Load Results ------------------------------------------------------------
+
+# Simulation date
 sim_date <- "31JUL2023"
 
+# Create output directories
+dir.create(here::here('Tables','friedman', sim_date), recursive = TRUE)
+dir.create(here::here('Figures','friedman', sim_date), recursive = TRUE)
+
 # Read in simulation results
-results <- read_csv(paste0('Results/friedman/', sim_date, '.csv'),
+results <- read_csv(here::here('Results','friedman', paste0(sim_date, '.csv')),
                     show_col_types = FALSE, 
                     col_types = cols(waic = col_double(), 
                                      W1 = col_double(), W2 = col_double(), W3 = col_double(),
@@ -21,7 +29,6 @@ results <- read_csv(paste0('Results/friedman/', sim_date, '.csv'),
                                      W16 = col_double(), W17 = col_double(), W18 = col_double(),
                                      W19 = col_double(), W20 = col_double()))
 
-# 0.95, 50 tree, seed 18 & 69, p = 10
 
 # Create Monte Carlo 95% Intervals ----------------------------------------
 
@@ -37,15 +44,18 @@ summaries <- results |>
                          Metric == 'rpehe' ~ 0)) |>
   filter(!is.na(mean))
 
-# Overall Results ---------------------------------------------------------
 
+
+# Tables and Figures ------------------------------------------------------
+
+# Define formatting function
 fmt_dec <- function(num, ndec = 2){
   new_num <- round(num, ndec)
   if(new_num < 0) sprintf(paste0("%.", ndec, "f"), new_num)
   else sprintf(paste0("%.", ndec, "f"), abs(new_num))
 }
 
-# First Table
+# Summary statistics table
 t1 <- summaries |>
   filter(model == 'CL-BART' | (model == 'clogit' & num_trees == 5)) |>
   mutate(num_trees = ifelse(model == 'clogit', NA, num_trees),
@@ -59,20 +69,9 @@ t1 <- summaries |>
   pivot_wider(id_cols = c(p, alpha_rho, beta_rho, model, num_trees),
               names_from = Metric, values_from = Value) |>
   arrange(p, alpha_rho, beta_rho, model, num_trees)
-write_csv(t1, paste0('Tables/friedman/', sim_date, '/t1.csv'))
+write_csv(t1, here::here('Tables','friedman', sim_date, 'friedman-summary-stats.csv'))
 
-# Table
-t1_overall <- summaries |>
-  filter(model == 'CL-BART' | (model == 'clogit' & num_trees == 5)) |>
-  mutate(num_trees = ifelse(model == 'clogit', NA, num_trees)) |>
-  filter(Metric %in% c('bias','rpehe','coverage','width')) |>
-  mutate(Value = paste0(round(mean, 2), ' (', round(l95, 2), ', ', round(u95, 2), ')')) |>
-  pivot_wider(id_cols = c(p, alpha_rho, beta_rho, num_trees, model),
-              names_from = Metric, values_from = Value) |>
-  arrange(p, alpha_rho, beta_rho, desc(model), num_trees)
-write_csv(t1_overall, 'Tables/friedman/t1.csv')
-
-# Figure (option 1, with clogit)
+# Summary statistics plot
 f1 <- summaries |>
   filter(model %in% c('CL-BART','clogit')) |> #,'CL-BART-avg')) |>
   filter(Metric %in% c('bias','coverage','rpehe')) |>
@@ -88,52 +87,11 @@ f1 <- summaries |>
        x = 'Number of Trees in Ensemble',
        y = 'Estimate w/ 95% Monte Carlo Confidence Interval',
        color = 'Model')
-f1
-ggsave(paste0('Figures/friedman/', sim_date, '/f1.png'), width = 6, height = 5)
-
-# summaries |>
-#   filter(model == 'CL-BART' | (model == 'clogit' & num_trees == 5)) |>
-#   filter(Metric %in% c('bias','coverage','rpehe')) |>
-#   pivot_wider(id_cols = c(p, alpha_rho, beta_rho, num_trees, Metric),
-#               names_from = model, values_from = c(mean, l95, u95)) |>
-#   ggplot(aes(x = num_trees, y = `mean_CL-BART`, color = interaction(alpha_rho, beta_rho))) +
-#   geom_pointrange(aes(ymin = `l95_CL-BART`, ymax = `u95_CL-BART`), size = .3, position = position_dodge(.5)) +
-#   geom_line(position = position_dodge(.5)) +
-#   geom_hline(aes(yintercept = mean_clogit), lty = 2, alpha = 0.5) +
-#   geom_hline(aes(yintercept = l95_clogit), lty = 2, alpha = 0.5) +
-#   geom_hline(aes(yintercept = u95_clogit), lty = 2, alpha = 0.5) +
-#   facet_grid(Metric~paste0('# Predictors: ', p), scales = 'free') +
-#   theme_bw() +
-#   scale_x_continuous(breaks = unique(results$num_trees)) +
-#   labs(title = 'Simulation Results - Overall',
-#        subtitle = paste0('Predictors sampled from a set of predictors with an ', unique(results$corstr), ' correlation structure.'),
-#        x = 'Number of Trees in Ensemble',
-#        y = 'Estimate w/ 95% Monte Carlo Confidence Interval',
-#        color = 'Regularization')
+ggsave(here::here('Figures','friedman', sim_date, 'friedman-summary-stats.png'), width = 6, height = 5)
 
 
-
-# In-Depth Analysis of CL-BART Model Fits ---------------------------------
-
-# Just Summaries
-f2 <- summaries |>
-  filter(model == 'CL-BART') |>
-  filter(Metric %in% c('bias','coverage','rpehe','waic')) |>
-  ggplot(aes(x = factor(num_trees), y = mean, lty = interaction(alpha_rho, beta_rho))) +
-  geom_pointrange(aes(ymin = l95, ymax = u95), size = .3, position = position_dodge(.5)) +
-  #geom_line(position = position_dodge(.5)) +
-  #geom_hline(aes(yintercept = ref), lty = 2, alpha = 0.4) +
-  #scale_x_continuous(breaks = unique(results$num_trees)) +
-  facet_grid(Metric~paste0('# Predictors: ', p), scales = 'free') + 
-  theme_bw() +
-  theme(legend.position = 'top') +
-  labs(title = 'Friedman Simulation Results',
-       x = 'Number of Trees in Ensemble',
-       y = 'Estimate w/ 95% Monte Carlo Confidence Interval')
-f2
-
-# Analyze the relative performance change when adding more trees
-clbart_rel <- results |>
+# Relative performance table
+t2 <- results |>
   filter(model == 'CL-BART') |>
   pivot_longer(cols = bias:waic, names_to = 'Metric', values_to = 'Value') |>
   mutate(ref_val = min(abs(Value)), 
@@ -143,9 +101,9 @@ clbart_rel <- results |>
             .by = c(Metric, p, alpha_rho, beta_rho, num_trees)) |>
   pivot_wider(id_cols = c(p, alpha_rho, beta_rho, num_trees), 
               names_from = Metric, values_from = mean_rel_val)
-clbart_rel
 
-clbart_rel |>
+# Relative performance plot
+f2 <- t2 |>
   pivot_longer(cols = bias:waic, names_to = 'Metric', values_to = 'Value') |>
   filter(Metric != 'width') |>
   ggplot(aes(x = factor(num_trees), y = Value, group = interaction(alpha_rho, beta_rho),
@@ -155,24 +113,10 @@ clbart_rel |>
   facet_grid(Metric~paste0('# Predictors: ', p), scales = 'free') + 
   theme_bw() +
   theme(legend.position = 'top')
+ggsave(here::here('Figures','friedman', sim_date, 'friedman-relative-performance.png'), width = 6, height = 5)
 
-# WAIC plot
-fried_waic <- clbart_rel |>
-  filter(p == 10 & alpha_rho == 0.95) |>
-  pivot_longer(cols = bias:waic, names_to = 'Metric', values_to = 'Value') |>
-  filter(Metric == 'waic') |>
-  ggplot(aes(x = factor(num_trees), y = Value, group = interaction(alpha_rho, beta_rho))) +
-  geom_point(show.legend = FALSE) +
-  geom_line(show.legend = FALSE) +
-  theme_bw() +
-  #  facet_wrap(~Metric, scales = 'free') +
-  theme(legend.position = 'top') +
-  labs(x = '# Trees',
-       y = 'Average Relative WAIC')
-ggsave(paste0('Figures/friedman/', sim_date, '/friedman_waic.png'), width = 4, height = 4)
-
-# Variable Importance
-results |>
+# Variable importance plot
+f3 <- results |>
   filter(model == 'CL-BART') |>
   pivot_longer(cols = W1:W20, names_to = 'Moderator', values_to = 'Value') |>
   mutate(Value = coalesce(Value, 0),
@@ -186,8 +130,27 @@ results |>
   facet_grid(interaction(alpha_rho, beta_rho)~p, scales = 'free') +
   theme_bw()
 
-# variable importance plot
-fried_imp <- results |>
+
+# Manuscript Figures ------------------------------------------------------
+
+# Relative WAIC plot
+f2a <- t2 |>
+  filter(p == 10 & alpha_rho == 0.95) |>
+  pivot_longer(cols = bias:waic, names_to = 'Metric', values_to = 'Value') |>
+  filter(Metric == 'waic') |>
+  ggplot(aes(x = factor(num_trees), y = Value, group = interaction(alpha_rho, beta_rho))) +
+  geom_point(show.legend = FALSE) +
+  geom_line(show.legend = FALSE) +
+  theme_bw() +
+  #  facet_wrap(~Metric, scales = 'free') +
+  theme(legend.position = 'top') +
+  labs(x = '# Trees',
+       y = 'Average Relative WAIC')
+ggsave(here::here('Figures','friedman', sim_date, 'friedman-relative-waic.png'), width = 4, height = 4)
+
+
+# Variable importance plot
+f3a <- results |>
   filter(model == 'CL-BART') |>
   filter(alpha_rho == 0.95 & p == 10) |>
   pivot_longer(cols = W1:W20, names_to = 'Moderator', values_to = 'Value') |>
@@ -206,8 +169,51 @@ fried_imp <- results |>
   labs(x = 'Effect Moderator',
        y = 'Average Variable Split Proportion',
        color = '# Trees')
-ggsave(paste0('Figures/friedman/', sim_date, '/friedman_imp.png'), width = 6.5, height = 5)
-  
-library(patchwork)
-fried_waic + fried_imp + plot_annotation(tag_levels = 'A')
-ggsave(paste0('Figures/friedman/', sim_date, '/friedman_waic_imp.png'), width = 6.5, height = 3.5)
+ggsave(here::here('Figures','friedman', sim_date, 'friedman-var-imp.png'), width = 6.5, height = 5)
+write_rds(f3a, here::here('Figures','friedman', sim_date, 'friedman-var-imp.rds'))
+
+# Combined relative WAIC and variable importance plot
+f2a + f3a + plot_annotation(tag_levels = 'A')
+ggsave(here::here('Figures','friedman', sim_date, 'friedman-waic-and-var-imp.png'), width = 6.5, height = 3.5)
+
+
+
+
+# Extra Tables and Figures ------------------------------------------------
+
+# Summary statistics plot with Oracle CLR for reference
+summaries |>
+  filter(model == 'CL-BART' | (model == 'clogit' & num_trees == 5)) |>
+  filter(Metric %in% c('bias','coverage','rpehe')) |>
+  pivot_wider(id_cols = c(p, alpha_rho, beta_rho, num_trees, Metric),
+              names_from = model, values_from = c(mean, l95, u95)) |>
+  ggplot(aes(x = num_trees, y = `mean_CL-BART`, color = interaction(alpha_rho, beta_rho))) +
+  geom_pointrange(aes(ymin = `l95_CL-BART`, ymax = `u95_CL-BART`), size = .3, position = position_dodge(.5)) +
+  geom_line(position = position_dodge(.5)) +
+  geom_hline(aes(yintercept = mean_clogit), lty = 2, alpha = 0.5) +
+  geom_hline(aes(yintercept = l95_clogit), lty = 2, alpha = 0.5) +
+  geom_hline(aes(yintercept = u95_clogit), lty = 2, alpha = 0.5) +
+  facet_grid(Metric~paste0('# Predictors: ', p), scales = 'free') +
+  theme_bw() +
+  scale_x_continuous(breaks = unique(results$num_trees)) +
+  labs(title = 'Simulation Results - Overall',
+       subtitle = paste0('Predictors sampled from a set of predictors with an ', unique(results$corstr), ' correlation structure.'),
+       x = 'Number of Trees in Ensemble',
+       y = 'Estimate w/ 95% Monte Carlo Confidence Interval',
+       color = 'Regularization')
+
+# Summary statistics plot - alternate
+summaries |>
+  filter(model == 'CL-BART') |>
+  filter(Metric %in% c('bias','coverage','rpehe','waic')) |>
+  ggplot(aes(x = factor(num_trees), y = mean, lty = interaction(alpha_rho, beta_rho))) +
+  geom_pointrange(aes(ymin = l95, ymax = u95), size = .3, position = position_dodge(.5)) +
+  #geom_line(position = position_dodge(.5)) +
+  #geom_hline(aes(yintercept = ref), lty = 2, alpha = 0.4) +
+  #scale_x_continuous(breaks = unique(results$num_trees)) +
+  facet_grid(Metric~paste0('# Predictors: ', p), scales = 'free') + 
+  theme_bw() +
+  theme(legend.position = 'top') +
+  labs(title = 'Friedman Simulation Results',
+       x = 'Number of Trees in Ensemble',
+       y = 'Estimate w/ 95% Monte Carlo Confidence Interval')
