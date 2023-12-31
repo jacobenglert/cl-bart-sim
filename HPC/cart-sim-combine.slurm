@@ -11,4 +11,4 @@
 
 module load R/4.2.2
 
-Rscript R/cart-combine.R
+Rscript R/cart-sim-combine.R
